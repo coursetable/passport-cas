@@ -1,7 +1,7 @@
 /**
  * Cas
  */
-var _ = require('underscore'),
+const _ = require('underscore'),
     url = require('url'),
     http = require('http'),
     https = require('https'),
