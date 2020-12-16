@@ -1,6 +1,7 @@
 # passport-cas
 
 Cas authentication strategies for Passport.
+This is an updated fork of https://github.com/sadne/passport-cas.
 
 
 ## Install
