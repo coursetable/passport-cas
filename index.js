@@ -158,7 +158,7 @@ Strategy.prototype.authenticate = function (req, options) {
 
     var service = this.service(req);
 
-    var ticket = req.param('ticket');
+    var ticket = req.query['ticket'];
     if (!ticket) {
         var redirectURL = url.parse(this.ssoBase + '/login', true);
 
@@ -209,7 +209,10 @@ Strategy.prototype.authenticate = function (req, options) {
                 query: {
                     'TARGET': service
                 }
-            })
+            }),
+            headers: {
+                'Content-Type': 'text/xml',
+            }
         }, _handleResponse);
 
         request.on('error', function (e) {
@@ -227,7 +230,10 @@ Strategy.prototype.authenticate = function (req, options) {
                     ticket: ticket,
                     service: service
                 }
-            })
+            }),
+            headers: {
+                'Content-Type': 'text/xml',
+            }
         }, _handleResponse);
 
         get.on('error', function (e) {
