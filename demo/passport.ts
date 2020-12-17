@@ -9,12 +9,13 @@ type User = {
 passport.use(
   new CasStrategy(
     {
+      version: "CAS2.0",
       ssoBaseURL: "https://secure.its.yale.edu/cas",
       serverBaseURL: "http://localhost:9000",
     },
-    function (login, done) {
+    function (user, done) {
       done(null, {
-        netId: login,
+        netId: user.username,
       });
     }
   )

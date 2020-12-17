@@ -10,12 +10,10 @@ import util from "util";
 import { parseString, processors } from "xml2js";
 import express from "express";
 
-type CasInfo =
-  | string
-  | {
-      user: any;
-      attributes: any;
-    };
+type CasInfo = {
+  username: string;
+  attributes?: any;
+};
 type VersionOptions =
   | "CAS1.0"
   | "CAS2.0"
@@ -48,7 +46,9 @@ const validateResponseCas1 = async (body: string): Promise<CasInfo> => {
     if (lines[0] === "no") {
       throw new Error("Authentication rejected");
     } else if (lines[0] === "yes" && lines.length >= 2) {
-      return lines[1];
+      return {
+        username: lines[1],
+      };
     }
   }
   throw new Error("The response from the server was bad");
@@ -88,7 +88,8 @@ const validateResponseCas3saml = async (body: string): Promise<CasInfo> => {
         }
       );
       const profile = {
-        user: response.assertion.authenticationstatement.subject.nameidentifier,
+        username:
+          response.assertion.authenticationstatement.subject.nameidentifier,
         attributes: attributes,
       };
       return profile;
