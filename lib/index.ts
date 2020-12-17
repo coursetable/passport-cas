@@ -16,7 +16,12 @@ type CasInfo =
       user: any;
       attributes: any;
     };
-type VersionOptions = "CAS1.0" | "CAS2.0" | "CAS3.0";
+type VersionOptions =
+  | "CAS1.0"
+  | "CAS2.0"
+  | "CAS2.0-with-saml"
+  | "CAS3.0"
+  | "CAS3.0-with-saml";
 type VerifyDoneCallback = (err: any, user?: any, info?: any) => void;
 type VerifyFunction = (login: CasInfo, done: VerifyDoneCallback) => void;
 
@@ -28,7 +33,6 @@ class Strategy extends BaseStrategy {
   private serverBaseURL?: string;
   private validateURI: string;
   private callbackURL?: string;
-  private useSaml: boolean;
   private _verify: VerifyFunction;
 
   constructor(
@@ -49,7 +53,6 @@ class Strategy extends BaseStrategy {
     this.ssoBase = options.ssoBaseURL;
     this.serverBaseURL = options.serverBaseURL;
     this.callbackURL = options.callbackURL;
-    this.useSaml = options.useSaml ?? false;
 
     if (!verify) {
       throw new Error("cas authentication strategy requires a verify function");
@@ -64,13 +67,14 @@ class Strategy extends BaseStrategy {
       case "CAS2.0":
         validateUri = "/serviceValidate";
       case "CAS3.0":
-        if (this.useSaml) {
-          validateUri = "/samlValidate";
-        } else {
-          validateUri = "/p3/serviceValidate";
-        }
+        validateUri = "/p3/serviceValidate";
+        break;
+      case "CAS2.0-with-saml":
+      case "CAS3.0-with-saml":
+        validateUri = "/samlValidate";
         break;
       default:
+        const _exhaustiveCheck: never = this.version;
         throw new Error("unsupported version " + this.version);
     }
     this.validateURI = options.validateURL ?? validateUri;
@@ -79,20 +83,9 @@ class Strategy extends BaseStrategy {
   authenticate(req: express.Request, options?: any): void {
     options = options || {};
 
-    // CAS Logout flow as described in
-    // https://wiki.jasig.org/display/CAS/Proposal%3A+Front-Channel+Single+Sign-Out var relayState = req.query.RelayState;
-    const relayState = req.query.RelayState;
-    if (relayState) {
-      // logout locally
-      req.logout();
-      return this.redirect(
-        this.ssoBase + "/logout?_eventId=next&RelayState=" + relayState
-      );
-    }
-
+    const service = this.service(req);
     const ticket = req.query["ticket"];
     if (!ticket) {
-      const service = this.service(req);
       const redirectURL = url.parse(this.ssoBase + "/login", true);
 
       redirectURL.query.service = service;
@@ -106,10 +99,12 @@ class Strategy extends BaseStrategy {
       return this.redirect(url.format(redirectURL));
     }
 
-    const service = this.service(req);
     const self = this;
 
-    if (this.useSaml) {
+    if (
+      this.version === "CAS3.0-with-saml" ||
+      this.version === "CAS2.0-with-saml"
+    ) {
       const requestId = uuid.v4();
       const issueInstant = new Date().toISOString();
       const soapEnvelope = util.format(
@@ -173,6 +168,14 @@ class Strategy extends BaseStrategy {
   private validate(req: express.Request, body: string): void {
     const self = this;
     const verified = this.finish;
+
+    const xmlParseOpts = {
+      trim: true,
+      normalize: true,
+      explicitArray: false,
+      tagNameProcessors: [processors.normalize, processors.stripPrefix],
+    };
+
     switch (this.version) {
       case "CAS1.0":
         {
@@ -189,79 +192,73 @@ class Strategy extends BaseStrategy {
         break;
       case "CAS2.0":
       case "CAS3.0":
-        const xmlParseOpts = {
-          trim: true,
-          normalize: true,
-          explicitArray: false,
-          tagNameProcessors: [processors.normalize, processors.stripPrefix],
-        };
-
-        if (this.useSaml) {
-          {
-            parseString(body, xmlParseOpts, function (err, result) {
-              if (err) {
+        {
+          parseString(body, xmlParseOpts, function (err, result) {
+            if (err) {
+              return verified(
+                new Error("The response from the server was bad")
+              );
+            }
+            try {
+              if (result.serviceresponse.authenticationfailure) {
                 return verified(
-                  new Error("The response from the server was bad")
+                  new Error(
+                    "Authentication failed " +
+                      result.serviceresponse.authenticationfailure.$.code
+                  )
                 );
               }
-              try {
-                var response = result.envelope.body.response;
-                var success = response.status.statuscode["$"].Value.match(
-                  /Success$/
+              var success = result.serviceresponse.authenticationsuccess;
+              if (success) {
+                return self._verify(success, verified);
+              }
+              return verified(new Error("Authentication failed"));
+            } catch (e) {
+              return verified(new Error("Authentication failed"));
+            }
+          });
+        }
+        break;
+      case "CAS2.0-with-saml":
+      case "CAS3.0-with-saml":
+        {
+          parseString(body, xmlParseOpts, function (err, result) {
+            if (err) {
+              return verified(
+                new Error("The response from the server was bad")
+              );
+            }
+            try {
+              var response = result.envelope.body.response;
+              var success = response.status.statuscode["$"].Value.match(
+                /Success$/
+              );
+              if (success) {
+                var attributes: any = {};
+                _.each(
+                  response.assertion.attributestatement.attribute,
+                  function (attribute) {
+                    attributes[attribute["$"].AttributeName.toLowerCase()] =
+                      attribute.attributevalue;
+                  }
                 );
-                if (success) {
-                  var attributes: any = {};
-                  _.each(
-                    response.assertion.attributestatement.attribute,
-                    function (attribute) {
-                      attributes[attribute["$"].AttributeName.toLowerCase()] =
-                        attribute.attributevalue;
-                    }
-                  );
-                  var profile = {
-                    user:
-                      response.assertion.authenticationstatement.subject
-                        .nameidentifier,
-                    attributes: attributes,
-                  };
-                  return self._verify(profile, verified);
-                }
-                return verified(new Error("Authentication failed"));
-              } catch (e) {
-                return verified(new Error("Authentication failed"));
+                var profile = {
+                  user:
+                    response.assertion.authenticationstatement.subject
+                      .nameidentifier,
+                  attributes: attributes,
+                };
+                return self._verify(profile, verified);
               }
-            });
-          }
-        } else {
-          {
-            parseString(body, xmlParseOpts, function (err, result) {
-              if (err) {
-                return verified(
-                  new Error("The response from the server was bad")
-                );
-              }
-              try {
-                if (result.serviceresponse.authenticationfailure) {
-                  return verified(
-                    new Error(
-                      "Authentication failed " +
-                        result.serviceresponse.authenticationfailure.$.code
-                    )
-                  );
-                }
-                var success = result.serviceresponse.authenticationsuccess;
-                if (success) {
-                  return self._verify(success, verified);
-                }
-                return verified(new Error("Authentication failed"));
-              } catch (e) {
-                return verified(new Error("Authentication failed"));
-              }
-            });
-          }
+              return verified(new Error("Authentication failed"));
+            } catch (e) {
+              return verified(new Error("Authentication failed"));
+            }
+          });
         }
         break;
       default:
+        const _exhaustiveCheck: never = this.version;
         throw new Error("unsupported version " + this.version);
     }
   }
