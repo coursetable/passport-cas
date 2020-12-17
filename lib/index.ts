@@ -25,6 +25,80 @@ type VersionOptions =
 type VerifyDoneCallback = (err: any, user?: any, info?: any) => void;
 type VerifyFunction = (login: CasInfo, done: VerifyDoneCallback) => void;
 
+const parseXmlString = (xml: string): Promise<any> => {
+  const xmlParseOpts = {
+    trim: true,
+    normalize: true,
+    explicitArray: false,
+    tagNameProcessors: [processors.normalize, processors.stripPrefix],
+  };
+  return new Promise<any>((resolve, reject) => {
+    parseString(xml, xmlParseOpts, (err, result) => {
+      if (err) {
+        return reject(err);
+      }
+      resolve(result);
+    });
+  });
+};
+
+const validateResponseCas1 = async (body: string): Promise<CasInfo> => {
+  const lines = body.split("\n");
+  if (lines.length >= 1) {
+    if (lines[0] === "no") {
+      throw new Error("Authentication rejected");
+    } else if (lines[0] === "yes" && lines.length >= 2) {
+      return lines[1];
+    }
+  }
+  throw new Error("The response from the server was bad");
+};
+const validateResponseCas3 = async (body: string): Promise<CasInfo> => {
+  const result = await parseXmlString(body);
+
+  try {
+    if (result.serviceresponse.authenticationfailure) {
+      throw new Error(
+        "Authentication failed " +
+          result.serviceresponse.authenticationfailure.$.code
+      );
+    }
+    const success = result.serviceresponse.authenticationsuccess;
+    if (success) {
+      return success;
+    }
+    throw new Error("Authentication failed but success present");
+  } catch (e) {
+    throw new Error("Authentication failed - XML parsing issue");
+  }
+};
+const validateResponseCas3saml = async (body: string): Promise<CasInfo> => {
+  const result = await parseXmlString(body);
+
+  try {
+    var response = result.envelope.body.response;
+    var success = response.status.statuscode["$"].Value.match(/Success$/);
+    if (success) {
+      let attributes: any = {};
+      _.each(
+        response.assertion.attributestatement.attribute,
+        function (attribute) {
+          attributes[attribute["$"].AttributeName.toLowerCase()] =
+            attribute.attributevalue;
+        }
+      );
+      const profile = {
+        user: response.assertion.authenticationstatement.subject.nameidentifier,
+        attributes: attributes,
+      };
+      return profile;
+    }
+    throw new Error("Authentication failed");
+  } catch (e) {
+    throw new Error("Authentication failed");
+  }
+};
+
 class Strategy extends BaseStrategy {
   name = "cas";
 
@@ -101,6 +175,7 @@ class Strategy extends BaseStrategy {
 
     const self = this;
 
+    let fetchValidation;
     if (
       this.version === "CAS3.0-with-saml" ||
       this.version === "CAS2.0-with-saml"
@@ -114,39 +189,55 @@ class Strategy extends BaseStrategy {
         ticket
       );
 
-      axios
-        .post(`${this.ssoBase}/${this.validateURI}`, soapEnvelope, {
+      fetchValidation = axios.post(
+        `${this.ssoBase}/${this.validateURI}`,
+        soapEnvelope,
+        {
           params: {
             TARGET: service,
           },
           headers: {
             "Content-Type": "text/xml",
           },
-        })
-        .then((response) => {
-          return this.validate(req, response.data);
-        })
-        .catch((error) => {
-          return this.error(error);
-        });
+        }
+      );
     } else {
-      axios
-        .get(`${this.ssoBase}/${this.validateURI}`, {
-          params: {
-            ticket: ticket,
-            service: service,
-          },
-          headers: {
-            "Content-Type": "text/xml",
-          },
-        })
-        .then((response) => {
-          return self.validate(req, response.data);
-        })
-        .catch((error) => {
-          return self.error(error);
-        });
+      fetchValidation = axios.get(`${this.ssoBase}/${this.validateURI}`, {
+        params: {
+          ticket: ticket,
+          service: service,
+        },
+        headers: {
+          "Content-Type": "text/xml",
+        },
+      });
     }
+
+    fetchValidation
+      .then((response) => {
+        return response.data as string;
+      })
+      .then((xml) => {
+        switch (this.version) {
+          case "CAS1.0":
+            return validateResponseCas1(xml);
+          case "CAS2.0":
+          case "CAS3.0":
+            return validateResponseCas3(xml);
+          case "CAS2.0-with-saml":
+          case "CAS3.0-with-saml":
+            return validateResponseCas3saml(xml);
+          default:
+            const _exhaustiveCheck: never = this.version;
+            throw new Error("unsupported version " + this.version);
+        }
+      })
+      .then((user) => {
+        return self._verify(user, self.finish);
+      })
+      .catch((error) => {
+        return self.error(error);
+      });
   }
 
   /**
@@ -160,107 +251,6 @@ class Strategy extends BaseStrategy {
       return this.fail(info);
     }
     this.success(user, info);
-  }
-
-  /**
-   * Validates a response from the server.
-   */
-  private validate(req: express.Request, body: string): void {
-    const self = this;
-    const verified = this.finish;
-
-    const xmlParseOpts = {
-      trim: true,
-      normalize: true,
-      explicitArray: false,
-      tagNameProcessors: [processors.normalize, processors.stripPrefix],
-    };
-
-    switch (this.version) {
-      case "CAS1.0":
-        {
-          var lines = body.split("\n");
-          if (lines.length >= 1) {
-            if (lines[0] === "no") {
-              return verified(new Error("Authentication failed"));
-            } else if (lines[0] === "yes" && lines.length >= 2) {
-              return self._verify(lines[1], verified);
-            }
-          }
-          return verified(new Error("The response from the server was bad"));
-        }
-        break;
-      case "CAS2.0":
-      case "CAS3.0":
-        {
-          parseString(body, xmlParseOpts, function (err, result) {
-            if (err) {
-              return verified(
-                new Error("The response from the server was bad")
-              );
-            }
-            try {
-              if (result.serviceresponse.authenticationfailure) {
-                return verified(
-                  new Error(
-                    "Authentication failed " +
-                      result.serviceresponse.authenticationfailure.$.code
-                  )
-                );
-              }
-              var success = result.serviceresponse.authenticationsuccess;
-              if (success) {
-                return self._verify(success, verified);
-              }
-              return verified(new Error("Authentication failed"));
-            } catch (e) {
-              return verified(new Error("Authentication failed"));
-            }
-          });
-        }
-        break;
-      case "CAS2.0-with-saml":
-      case "CAS3.0-with-saml":
-        {
-          parseString(body, xmlParseOpts, function (err, result) {
-            if (err) {
-              return verified(
-                new Error("The response from the server was bad")
-              );
-            }
-            try {
-              var response = result.envelope.body.response;
-              var success = response.status.statuscode["$"].Value.match(
-                /Success$/
-              );
-              if (success) {
-                var attributes: any = {};
-                _.each(
-                  response.assertion.attributestatement.attribute,
-                  function (attribute) {
-                    attributes[attribute["$"].AttributeName.toLowerCase()] =
-                      attribute.attributevalue;
-                  }
-                );
-                var profile = {
-                  user:
-                    response.assertion.authenticationstatement.subject
-                      .nameidentifier,
-                  attributes: attributes,
-                };
-                return self._verify(profile, verified);
-              }
-              return verified(new Error("Authentication failed"));
-            } catch (e) {
-              return verified(new Error("Authentication failed"));
-            }
-          });
-        }
-        break;
-      default:
-        const _exhaustiveCheck: never = this.version;
-        throw new Error("unsupported version " + this.version);
-    }
   }
 
   private service(req: express.Request): string {
