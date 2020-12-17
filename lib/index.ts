@@ -173,8 +173,6 @@ class Strategy extends BaseStrategy {
       return this.redirect(url.format(redirectURL));
     }
 
-    const self = this;
-
     let fetchValidation;
     if (
       this.version === "CAS3.0-with-saml" ||
@@ -233,26 +231,26 @@ class Strategy extends BaseStrategy {
         }
       })
       .then((user) => {
-        return self._verify(user, self.finish);
+        // Call user-provided verify function.
+        return this._verify(user, (err: any, user?: any, info?: any): void => {
+          // Finish authentication flow.
+          if (err) {
+            return this.error(err);
+          }
+          if (!user) {
+            return this.fail(info);
+          }
+          this.success(user, info);
+        });
       })
       .catch((error) => {
-        return self.error(error);
+        return this.error(error);
       });
   }
 
   /**
-   * Finish authentication flow.
+   * Generate the "service" parameter for the CAS callback URL.
    */
-  private finish(err: any, user?: any, info?: any): void {
-    if (err) {
-      return this.error(err);
-    }
-    if (!user) {
-      return this.fail(info);
-    }
-    this.success(user, info);
-  }
-
   private service(req: express.Request): string {
     const defaultServerBaseUrl = `${req.protocol}://${req.hostname}`;
     var serviceURL = this.callbackURL || req.originalUrl;
