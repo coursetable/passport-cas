@@ -99,7 +99,7 @@ const validateResponseCas3saml = async (body: string): Promise<CasInfo> => {
   }
 };
 
-class Strategy extends BaseStrategy {
+export class Strategy extends BaseStrategy {
   name = "cas";
 
   private version: VersionOptions;
@@ -188,7 +188,7 @@ class Strategy extends BaseStrategy {
       );
 
       fetchValidation = axios.post(
-        `${this.ssoBase}/${this.validateURI}`,
+        `${this.ssoBase}${this.validateURI}`,
         soapEnvelope,
         {
           params: {
@@ -200,7 +200,7 @@ class Strategy extends BaseStrategy {
         }
       );
     } else {
-      fetchValidation = axios.get(`${this.ssoBase}/${this.validateURI}`, {
+      fetchValidation = axios.get(`${this.ssoBase}${this.validateURI}`, {
         params: {
           ticket: ticket,
           service: service,
@@ -213,6 +213,7 @@ class Strategy extends BaseStrategy {
 
     fetchValidation
       .then((response) => {
+        console.log(response);
         return response.data as string;
       })
       .then((xml) => {
@@ -244,6 +245,7 @@ class Strategy extends BaseStrategy {
         });
       })
       .catch((error) => {
+        console.log("handling some error");
         return this.error(error);
       });
   }
@@ -265,4 +267,4 @@ class Strategy extends BaseStrategy {
   }
 }
 
-exports.Strategy = Strategy;
+export default Strategy;
