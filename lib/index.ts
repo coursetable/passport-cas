@@ -1,15 +1,15 @@
 /**
  * Cas
  */
-const _ = require('underscore'),
-    url = require('url'),
-    http = require('http'),
-    https = require('https'),
-    parseString = require('xml2js').parseString,
-    processors = require('xml2js/lib/processors'),
-    passport = require('passport'),
-    uuid = require('uuid'),
-    util = require('util');
+import _ from 'underscore';
+import url from 'url';
+import http from 'http';
+import https from 'https';
+import uuid from 'uuid';
+import passport from 'passport';
+import util from 'util';
+const parseString = require('xml2js').parseString;
+const processors = require('xml2js/lib/processors');
 
 function Strategy(options, verify) {
     if (typeof options == 'function') {
