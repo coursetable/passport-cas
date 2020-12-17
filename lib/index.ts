@@ -10,10 +10,14 @@ import { Strategy as BaseStrategy } from "passport-strategy";
 import util from "util";
 import { parseString, processors } from "xml2js";
 import express from "express";
-import { allowedNodeEnvironmentFlags } from "process";
 
+type CasInfo = string | {
+  user: any;
+  attributes: any;
+}
 type VersionOptions = "CAS1.0" | "CAS2.0" | "CAS3.0";
-type VerifyFunction = any;
+type VerifyDoneCallback = (err: any, user?: any, info?: any) => void;
+type VerifyFunction = (login: CasInfo, done: VerifyDoneCallback) => void;
 
 class Strategy extends BaseStrategy {
   name = "cas";
@@ -22,7 +26,7 @@ class Strategy extends BaseStrategy {
   private ssoBase: string;
   private serverBaseURL?: string;
   private validateURI: string;
-  private serviceURL?: string;
+  private callbackURL?: string;
   private useSaml: boolean;
   private _verify: VerifyFunction;
 
@@ -35,7 +39,7 @@ class Strategy extends BaseStrategy {
       ssoBaseURL: string;
       serverBaseURL?: string;
       validateURL?: string;
-      serviceURL?: string;
+      callbackURL?: string;
       useSaml?: boolean;
       passReqToCallback?: boolean;
     },
@@ -46,7 +50,7 @@ class Strategy extends BaseStrategy {
     this.version = options.version ?? "CAS1.0";
     this.ssoBase = options.ssoBaseURL;
     this.serverBaseURL = options.serverBaseURL;
-    this.serviceURL = options.serviceURL;
+    this.callbackURL = options.callbackURL;
     this.useSaml = options.useSaml ?? false;
 
     this.parsed = url.parse(this.ssoBase);
@@ -86,7 +90,7 @@ class Strategy extends BaseStrategy {
 
     // CAS Logout flow as described in
     // https://wiki.jasig.org/display/CAS/Proposal%3A+Front-Channel+Single+Sign-Out var relayState = req.query.RelayState;
-    var relayState = req.query.RelayState;
+    const relayState = req.query.RelayState;
     if (relayState) {
       // logout locally
       req.logout();
@@ -95,11 +99,10 @@ class Strategy extends BaseStrategy {
       );
     }
 
-    var service = this.service(req);
-
-    var ticket = req.query["ticket"];
+    const ticket = req.query["ticket"];
     if (!ticket) {
-      var redirectURL = url.parse(this.ssoBase + "/login", true);
+      const service = this.service(req);
+      const redirectURL = url.parse(this.ssoBase + "/login", true);
 
       redirectURL.query.service = service;
       // copy loginParams in login query
@@ -112,6 +115,7 @@ class Strategy extends BaseStrategy {
       return this.redirect(url.format(redirectURL));
     }
 
+    const service = this.service(req);
     const self = this;
     const _validateUri = this.validateURI;
 
@@ -297,7 +301,7 @@ class Strategy extends BaseStrategy {
 
   private service(req: express.Request): string {
     const defaultServerBaseUrl = `${req.protocol}://${req.hostname}`;
-    var serviceURL = this.serviceURL || req.originalUrl;
+    var serviceURL = this.callbackURL || req.originalUrl;
     var resolvedURL = url.resolve(
       this.serverBaseURL ?? defaultServerBaseUrl,
       serviceURL
