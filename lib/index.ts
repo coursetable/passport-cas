@@ -2,19 +2,20 @@
  * Cas
  */
 import _ from "underscore";
-import url, { UrlObject } from "url";
-import http from "http";
-import https from "https";
+import url from "url";
+import axios from "axios";
 import uuid from "uuid";
 import { Strategy as BaseStrategy } from "passport-strategy";
 import util from "util";
 import { parseString, processors } from "xml2js";
 import express from "express";
 
-type CasInfo = string | {
-  user: any;
-  attributes: any;
-}
+type CasInfo =
+  | string
+  | {
+      user: any;
+      attributes: any;
+    };
 type VersionOptions = "CAS1.0" | "CAS2.0" | "CAS3.0";
 type VerifyDoneCallback = (err: any, user?: any, info?: any) => void;
 type VerifyFunction = (login: CasInfo, done: VerifyDoneCallback) => void;
@@ -29,9 +30,6 @@ class Strategy extends BaseStrategy {
   private callbackURL?: string;
   private useSaml: boolean;
   private _verify: VerifyFunction;
-
-  private parsed: url.UrlWithStringQuery;
-  private client: typeof http | typeof https;
 
   constructor(
     options: {
@@ -52,13 +50,6 @@ class Strategy extends BaseStrategy {
     this.serverBaseURL = options.serverBaseURL;
     this.callbackURL = options.callbackURL;
     this.useSaml = options.useSaml ?? false;
-
-    this.parsed = url.parse(this.ssoBase);
-    if (this.parsed.protocol === "http:") {
-      this.client = http;
-    } else {
-      this.client = https;
-    }
 
     if (!verify) {
       throw new Error("cas authentication strategy requires a verify function");
@@ -117,73 +108,49 @@ class Strategy extends BaseStrategy {
 
     const service = this.service(req);
     const self = this;
-    const _validateUri = this.validateURI;
-
-    var _handleResponse = function (response: any) {
-      response.setEncoding("utf8");
-      var body = "";
-      response.on("data", function (chunk: string) {
-        return (body += chunk);
-      });
-      return response.on("end", function () {
-        return self.validate(req, body);
-      });
-    };
 
     if (this.useSaml) {
-      var requestId = uuid.v4();
-      var issueInstant = new Date().toISOString();
-      var soapEnvelope = util.format(
+      const requestId = uuid.v4();
+      const issueInstant = new Date().toISOString();
+      const soapEnvelope = util.format(
         '<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="%s" IssueInstant="%s"><samlp:AssertionArtifact>%s</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>',
         requestId,
         issueInstant,
         ticket
       );
-      var request = this.client.request(
-        {
-          host: this.parsed.hostname,
-          port: this.parsed.port,
-          method: "POST",
-          path: url.format({
-            pathname: this.parsed.pathname + _validateUri,
-            query: {
-              TARGET: service,
-            },
-          }),
+
+      axios
+        .post(`${this.ssoBase}/${this.validateURI}`, soapEnvelope, {
+          params: {
+            TARGET: service,
+          },
           headers: {
             "Content-Type": "text/xml",
           },
-        },
-        _handleResponse
-      );
-
-      request.on("error", function (e) {
-        return self.error(e);
-      });
-      request.write(soapEnvelope);
-      request.end();
+        })
+        .then((response) => {
+          return this.validate(req, response.data);
+        })
+        .catch((error) => {
+          return this.error(error);
+        });
     } else {
-      var get = this.client.get(
-        {
-          host: this.parsed.hostname,
-          port: this.parsed.port,
-          path: url.format({
-            pathname: this.parsed.pathname + _validateUri,
-            query: {
-              ticket: ticket,
-              service: service,
-            },
-          } as UrlObject),
+      axios
+        .get(`${this.ssoBase}/${this.validateURI}`, {
+          params: {
+            ticket: ticket,
+            service: service,
+          },
           headers: {
             "Content-Type": "text/xml",
           },
-        },
-        _handleResponse
-      );
-
-      get.on("error", function (e) {
-        return self.error(e);
-      });
+        })
+        .then((response) => {
+          return self.validate(req, response.data);
+        })
+        .catch((error) => {
+          return self.error(error);
+        });
     }
   }
 
