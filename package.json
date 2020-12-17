@@ -4,7 +4,10 @@
   "description": "CAS authentication strategies for Passport.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "scripts": {},
+  "scripts": {
+    "demo": "ts-node demo/server.ts",
+    "compile": "tsc"
+  },
   "repository": "https://github.com/coursetable/passport-cas",
   "keywords": [
     "passport",
