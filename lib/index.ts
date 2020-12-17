@@ -8,8 +8,7 @@ import https from 'https';
 import uuid from 'uuid';
 import passport from 'passport';
 import util from 'util';
-const parseString = require('xml2js').parseString;
-const processors = require('xml2js/lib/processors');
+import {parseString, processors} from 'xml2js';
 
 function Strategy(options, verify) {
     if (typeof options == 'function') {
