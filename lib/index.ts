@@ -6,37 +6,83 @@ import url from "url";
 import http from "http";
 import https from "https";
 import uuid from "uuid";
-import passport from "passport";
+import { Strategy as BaseStrategy } from "passport-strategy";
 import util from "util";
 import { parseString, processors } from "xml2js";
 
+type VersionOptions = "CAS1.0" | "CAS2.0" | "CAS3.0";
+type VerifyFunction = any;
+
+class Strategy2 extends BaseStrategy {
+  name = "cas";
+
+  private version: VersionOptions;
+  private ssoBase: string;
+  private serverBaseURL?: string;
+  private validateURI: string;
+  private serviceURL?: string;
+  private useSaml: boolean;
+  private passReqToCallback: boolean;
+  private verify: VerifyFunction;
+
+  private parsed: url.UrlWithStringQuery;
+  private client: typeof http | typeof https;
+
+  constructor(
+    options: {
+      version?: VersionOptions;
+      ssoBaseURL: string;
+      serverBaseURL?: string;
+      validateURL?: string;
+      serviceURL?: string;
+      useSaml?: boolean;
+      passReqToCallback?: boolean;
+    },
+    verify: VerifyFunction
+  ) {
+    super();
+
+    this.version = options.version ?? "CAS1.0";
+    this.ssoBase = options.ssoBaseURL;
+    this.serverBaseURL = options.serverBaseURL;
+    this.serviceURL = options.serviceURL;
+    this.useSaml = options.useSaml ?? false;
+    this.passReqToCallback = options.passReqToCallback ?? false;
+
+    this.parsed = url.parse(this.ssoBase);
+    if (this.parsed.protocol === "http:") {
+      this.client = http;
+    } else {
+      this.client = https;
+    }
+
+    if (!verify) {
+      throw new Error("cas authentication strategy requires a verify function");
+    }
+    this.verify = verify;
+
+    let validateUri: string;
+    switch (this.version) {
+      case "CAS1.0":
+        validateUri = "/validate";
+        break;
+      case "CAS2.0":
+        validateUri = "/serviceValidate";
+      case "CAS3.0":
+        if (this.useSaml) {
+          validateUri = "/samlValidate";
+        } else {
+          validateUri = "/p3/serviceValidate";
+        }
+        break;
+      default:
+        throw new Error("unsupported version " + this.version);
+    }
+    this.validateURI = options.validateURL ?? validateUri;
+  }
+}
+
 function Strategy(options, verify) {
-  if (typeof options == "function") {
-    verify = options;
-    options = {};
-  }
-  if (!verify) {
-    throw new Error("cas authentication strategy requires a verify function");
-  }
-  this.version = options.version || "CAS1.0";
-  this.ssoBase = options.ssoBaseURL;
-  this.serverBaseURL = options.serverBaseURL;
-  this.validateURL = options.validateURL;
-  this.serviceURL = options.serviceURL;
-  this.useSaml = options.useSaml || false;
-  this.parsed = url.parse(this.ssoBase);
-  if (this.parsed.protocol === "http:") {
-    this.client = http;
-  } else {
-    this.client = https;
-  }
-
-  passport.Strategy.call(this);
-
-  this.name = "cas";
-  this._verify = verify;
-  this._passReqToCallback = options.passReqToCallback;
-
   var xmlParseOpts = {
     trim: true,
     normalize: true,
