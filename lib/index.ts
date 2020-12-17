@@ -115,10 +115,10 @@ class Strategy extends BaseStrategy {
     const self = this;
     const _validateUri = this.validateURI;
 
-    var _handleResponse = function (response) {
+    var _handleResponse = function (response: any) {
       response.setEncoding("utf8");
       var body = "";
-      response.on("data", function (chunk) {
+      response.on("data", function (chunk: string) {
         return (body += chunk);
       });
       return response.on("end", function () {
@@ -154,7 +154,7 @@ class Strategy extends BaseStrategy {
       );
 
       request.on("error", function (e) {
-        return self.error(new Error(e));
+        return self.error(e);
       });
       request.write(soapEnvelope);
       request.end();
@@ -178,7 +178,7 @@ class Strategy extends BaseStrategy {
       );
 
       get.on("error", function (e) {
-        return self.error(new Error(e));
+        return self.error(e);
       });
     }
   }
