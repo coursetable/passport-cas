@@ -9,10 +9,13 @@ import { Strategy as BaseStrategy } from "passport-strategy";
 import util from "util";
 import { parseString, processors } from "xml2js";
 import express from "express";
+import VError from "verror";
 
 type CasInfo = {
-  username: string;
-  attributes?: any;
+  user: string;
+  attributes?: {
+    [key in string]: string | string[];
+  };
 };
 type VersionOptions =
   | "CAS1.0"
@@ -46,9 +49,10 @@ const validateResponseCas1 = async (body: string): Promise<CasInfo> => {
     if (lines[0] === "no") {
       throw new Error("Authentication rejected");
     } else if (lines[0] === "yes" && lines.length >= 2) {
-      return {
-        username: lines[1],
+      const profile: CasInfo = {
+        user: lines[1],
       };
+      return profile;
     }
   }
   throw new Error("The response from the server was bad");
@@ -87,9 +91,8 @@ const validateResponseCas3saml = async (body: string): Promise<CasInfo> => {
             attribute.attributevalue;
         }
       );
-      const profile = {
-        username:
-          response.assertion.authenticationstatement.subject.nameidentifier,
+      const profile: CasInfo = {
+        user: response.assertion.authenticationstatement.subject.nameidentifier,
         attributes: attributes,
       };
       return profile;
@@ -214,7 +217,6 @@ export class Strategy extends BaseStrategy {
 
     fetchValidation
       .then((response) => {
-        console.log(response);
         return response.data as string;
       })
       .then((xml) => {
@@ -237,7 +239,9 @@ export class Strategy extends BaseStrategy {
         return this._verify(user, (err: any, user?: any, info?: any): void => {
           // Finish authentication flow.
           if (err) {
-            return this.error(err);
+            return this.error(
+              new VError(err, "user-provided verify function failed")
+            );
           }
           if (!user) {
             return this.fail(info);
@@ -245,8 +249,8 @@ export class Strategy extends BaseStrategy {
           this.success(user, info);
         });
       })
-      .catch((error) => {
-        console.log("handling some error");
+      .catch((err) => {
+        const error = new VError(err, "Error in validation");
         return this.error(error);
       });
   }

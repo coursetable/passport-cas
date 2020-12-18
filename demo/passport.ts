@@ -12,9 +12,10 @@ passport.use(
       version: "CAS2.0",
       ssoBaseURL: "https://secure.its.yale.edu/cas",
     },
-    function (user, done) {
+    function (profile, done) {
+      console.log("verify user: ", profile);
       done(null, {
-        netId: user.username,
+        netId: profile.user,
       });
     }
   )
