@@ -300,12 +300,19 @@ var Strategy = /** @class */ (function (_super) {
         else if (req.headers["x-forwarded-host"]) {
             // We need to include this in Express <= v4, since the behavior
             // is to strip the port number by default. This is fixed in Express v5.
+            // First, determine host + port.
             var forwardHeader = req.headers["x-forwarded-host"];
             if (underscore_1.isArray(forwardHeader)) {
                 forwardHeader = forwardHeader[0];
             }
             var host = forwardHeader.split(",")[0];
-            baseUrl = req.protocol + "://" + host;
+            // Then, determine proto used. We default to http here.
+            var forwardProto = req.headers["x-forwarded-proto"];
+            if (underscore_1.isArray(forwardProto)) {
+                forwardProto = forwardProto[0];
+            }
+            var proto = forwardProto ? forwardProto.split(",")[0] : "http";
+            baseUrl = proto + "://" + host;
         }
         else if (req.headers["host"]) {
             // Fallback to "HOST" header.
