@@ -158,22 +158,29 @@ export class Strategy extends BaseStrategy {
     this.validateURI = options.validateURL ?? validateUri;
   }
 
-  authenticate(req: express.Request, options?: any): void {
-    options = options || {};
+  authenticate(
+    req: express.Request,
+    options?: {
+      /** Preserve the original query parameters. Default true. */
+      copyQueryParameters?: boolean;
+    }
+  ): void {
+    options = options ?? {};
 
     const service = this.service(req);
     const ticket = req.query["ticket"];
     if (!ticket) {
       const redirectURL = url.parse(this.ssoBase + "/login", true);
 
-      redirectURL.query.service = service;
-      // copy loginParams in login query
-      for (var property in options.loginParams) {
-        var loginParam = options.loginParams[property];
-        if (loginParam) {
-          redirectURL.query[property] = loginParam;
+      if (options.copyQueryParameters ?? true) {
+        // Copy query parameters from original request.
+        const originalQuery = url.parse(req.url, true).query;
+        if (originalQuery) {
+          redirectURL.query = originalQuery;
         }
       }
+
+      redirectURL.query.service = service;
       return this.redirect(url.format(redirectURL));
     }
 

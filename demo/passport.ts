@@ -49,8 +49,11 @@ const casLogin = function (
         return next(err);
       }
 
-      // TODO: use redirect parameter
-      return res.redirect("/check");
+      if (req.query.redirect) {
+        return res.redirect(req.query.redirect as string);
+      }
+
+      return res.redirect("/check?nothing");
     });
   })(req, res, next);
 };
