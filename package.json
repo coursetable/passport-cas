@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "demo": "ts-node demo/server.ts",
+    "demo": "DEBUG=axios ts-node demo/server.ts",
     "compile": "tsc"
   },
   "repository": "https://github.com/coursetable/passport-cas",
