@@ -1,6 +1,7 @@
 {
   "extends": "tsconfig-jc",
   "compilerOptions": {
+    "target": "ES2022",
     "outDir": "dist",
     "noUncheckedIndexedAccess": false,
     "exactOptionalPropertyTypes": false

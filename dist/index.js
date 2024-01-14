@@ -1,41 +1,13 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Strategy = void 0;
-/**
- * Cas
- */
-const underscore_1 = __importStar(require("underscore"));
 const url_1 = __importDefault(require("url"));
 const axios_1 = __importDefault(require("axios"));
 const uuid_1 = __importDefault(require("uuid"));
 const passport_strategy_1 = require("passport-strategy");
-const util_1 = __importDefault(require("util"));
 const xml2js_1 = require("xml2js");
 const verror_1 = __importDefault(require("verror"));
 const parseXmlString = (xml) => {
@@ -89,17 +61,17 @@ const validateResponseCas3 = async (body) => {
 const validateResponseCas3saml = async (body) => {
     const result = await parseXmlString(body);
     try {
-        var response = result.envelope.body.response;
-        var success = response.status.statuscode["$"].Value.match(/Success$/);
+        const response = result.envelope.body.response;
+        const success = response.status.statuscode["$"].Value.match(/Success$/);
         if (success) {
-            let attributes = {};
-            underscore_1.default.each(response.assertion.attributestatement.attribute, function (attribute) {
+            const attributes = {};
+            Object.values(response.assertion.attributestatement.attribute).forEach((attribute) => {
                 attributes[attribute["$"].AttributeName.toLowerCase()] =
                     attribute.attributevalue;
             });
             const profile = {
                 user: response.assertion.authenticationstatement.subject.nameidentifier,
-                attributes: attributes,
+                attributes,
             };
             return profile;
         }
@@ -168,7 +140,7 @@ class Strategy extends passport_strategy_1.Strategy {
             this.version === "CAS2.0-with-saml") {
             const requestId = uuid_1.default.v4();
             const issueInstant = new Date().toISOString();
-            const soapEnvelope = util_1.default.format('<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="%s" IssueInstant="%s"><samlp:AssertionArtifact>%s</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>', requestId, issueInstant, ticket);
+            const soapEnvelope = `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="${requestId}" IssueInstant="${issueInstant}"><samlp:AssertionArtifact>${ticket}</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
             fetchValidation = axios_1.default.post(`${this.ssoBase}${this.validateURI}`, soapEnvelope, {
                 params: {
                     TARGET: service,
@@ -190,9 +162,7 @@ class Strategy extends passport_strategy_1.Strategy {
             });
         }
         fetchValidation
-            .then((response) => {
-            return response.data;
-        })
+            .then((response) => response.data)
             .then((xml) => {
             switch (this.version) {
                 case "CAS1.0":
@@ -239,13 +209,13 @@ class Strategy extends passport_strategy_1.Strategy {
             // is to strip the port number by default. This is fixed in Express v5.
             // First, determine host + port.
             let forwardHeader = req.headers["x-forwarded-host"];
-            if ((0, underscore_1.isArray)(forwardHeader)) {
+            if (Array.isArray(forwardHeader)) {
                 forwardHeader = forwardHeader[0];
             }
             const host = forwardHeader.split(",")[0];
             // Then, determine proto used. We default to http here.
             let forwardProto = req.headers["x-forwarded-proto"];
-            if ((0, underscore_1.isArray)(forwardProto)) {
+            if (Array.isArray(forwardProto)) {
                 forwardProto = forwardProto[0];
             }
             const proto = forwardProto ? forwardProto.split(",")[0] : "http";

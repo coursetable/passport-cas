@@ -1,15 +1,10 @@
-/**
- * Cas
- */
-import _, { isArray } from "underscore";
 import url from "url";
-import axios from "axios";
+import axios, { type AxiosResponse } from "axios";
 import uuid from "uuid";
 import { Strategy as BaseStrategy } from "passport-strategy";
-import util from "util";
 import { parseString, processors } from "xml2js";
-import express from "express";
 import VError from "verror";
+import type express from "express";
 
 type CasInfo = {
   user: string;
@@ -80,20 +75,19 @@ const validateResponseCas3saml = async (body: string): Promise<CasInfo> => {
   const result = await parseXmlString(body);
 
   try {
-    var response = result.envelope.body.response;
-    var success = response.status.statuscode["$"].Value.match(/Success$/);
+    const response = result.envelope.body.response;
+    const success = response.status.statuscode["$"].Value.match(/Success$/);
     if (success) {
-      let attributes: any = {};
-      _.each(
-        response.assertion.attributestatement.attribute,
-        function (attribute) {
+      const attributes: NonNullable<CasInfo["attributes"]> = {};
+      Object.values(response.assertion.attributestatement.attribute).forEach(
+        (attribute: any) => {
           attributes[attribute["$"].AttributeName.toLowerCase()] =
             attribute.attributevalue;
         }
       );
       const profile: CasInfo = {
         user: response.assertion.authenticationstatement.subject.nameidentifier,
-        attributes: attributes,
+        attributes,
       };
       return profile;
     }
@@ -184,19 +178,14 @@ export class Strategy extends BaseStrategy {
       return this.redirect(url.format(redirectURL));
     }
 
-    let fetchValidation;
+    let fetchValidation: Promise<AxiosResponse>;
     if (
       this.version === "CAS3.0-with-saml" ||
       this.version === "CAS2.0-with-saml"
     ) {
       const requestId = uuid.v4();
       const issueInstant = new Date().toISOString();
-      const soapEnvelope = util.format(
-        '<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="%s" IssueInstant="%s"><samlp:AssertionArtifact>%s</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>',
-        requestId,
-        issueInstant,
-        ticket
-      );
+      const soapEnvelope = `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="${requestId}" IssueInstant="${issueInstant}"><samlp:AssertionArtifact>${ticket}</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
 
       fetchValidation = axios.post(
         `${this.ssoBase}${this.validateURI}`,
@@ -223,9 +212,7 @@ export class Strategy extends BaseStrategy {
     }
 
     fetchValidation
-      .then((response) => {
-        return response.data as string;
-      })
+      .then((response) => response.data as string)
       .then((xml) => {
         switch (this.version) {
           case "CAS1.0":
@@ -275,14 +262,14 @@ export class Strategy extends BaseStrategy {
 
       // First, determine host + port.
       let forwardHeader = req.headers["x-forwarded-host"];
-      if (isArray(forwardHeader)) {
+      if (Array.isArray(forwardHeader)) {
         forwardHeader = forwardHeader[0];
       }
       const host = forwardHeader.split(",")[0];
 
       // Then, determine proto used. We default to http here.
       let forwardProto = req.headers["x-forwarded-proto"];
-      if (isArray(forwardProto)) {
+      if (Array.isArray(forwardProto)) {
         forwardProto = forwardProto[0];
       }
       const proto = forwardProto ? forwardProto.split(",")[0] : "http";
