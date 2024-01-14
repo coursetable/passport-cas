@@ -158,7 +158,7 @@ export class Strategy extends BaseStrategy {
     this.validateURI = options.validateURL ?? validateUri;
   }
 
-  authenticate(
+  override authenticate(
     req: express.Request,
     options?: {
       /** Preserve the original query parameters. Default true. */
