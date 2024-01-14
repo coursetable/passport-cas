@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Strategy = void 0;
 const url_1 = __importDefault(require("url"));
-const axios_1 = __importDefault(require("axios"));
 const uuid_1 = __importDefault(require("uuid"));
 const passport_strategy_1 = require("passport-strategy");
 const xml2js_1 = require("xml2js");
@@ -141,28 +140,24 @@ class Strategy extends passport_strategy_1.Strategy {
             const requestId = uuid_1.default.v4();
             const issueInstant = new Date().toISOString();
             const soapEnvelope = `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="${requestId}" IssueInstant="${issueInstant}"><samlp:AssertionArtifact>${ticket}</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
-            fetchValidation = axios_1.default.post(`${this.ssoBase}${this.validateURI}`, soapEnvelope, {
-                params: {
-                    TARGET: service,
-                },
+            fetchValidation = fetch(`${this.ssoBase}${this.validateURI}?TARGET=${service}`, {
+                method: "POST",
+                body: soapEnvelope,
                 headers: {
                     "Content-Type": "text/xml",
                 },
             });
         }
         else {
-            fetchValidation = axios_1.default.get(`${this.ssoBase}${this.validateURI}`, {
-                params: {
-                    ticket: ticket,
-                    service: service,
-                },
+            fetchValidation = fetch(`${this.ssoBase}${this.validateURI}?ticket=${ticket}&service=${service}`, {
+                method: "GET",
                 headers: {
                     "Content-Type": "text/xml",
                 },
             });
         }
         fetchValidation
-            .then((response) => response.data)
+            .then((response) => response.text())
             .then((xml) => {
             switch (this.version) {
                 case "CAS1.0":

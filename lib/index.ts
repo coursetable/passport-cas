@@ -1,5 +1,4 @@
 import url from "url";
-import axios, { type AxiosResponse } from "axios";
 import uuid from "uuid";
 import { Strategy as BaseStrategy } from "passport-strategy";
 import { parseString, processors } from "xml2js";
@@ -178,7 +177,7 @@ export class Strategy extends BaseStrategy {
       return this.redirect(url.format(redirectURL));
     }
 
-    let fetchValidation: Promise<AxiosResponse>;
+    let fetchValidation: Promise<Response>;
     if (
       this.version === "CAS3.0-with-saml" ||
       this.version === "CAS2.0-with-saml"
@@ -187,32 +186,30 @@ export class Strategy extends BaseStrategy {
       const issueInstant = new Date().toISOString();
       const soapEnvelope = `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="${requestId}" IssueInstant="${issueInstant}"><samlp:AssertionArtifact>${ticket}</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
 
-      fetchValidation = axios.post(
-        `${this.ssoBase}${this.validateURI}`,
-        soapEnvelope,
+      fetchValidation = fetch(
+        `${this.ssoBase}${this.validateURI}?TARGET=${service}`,
         {
-          params: {
-            TARGET: service,
-          },
+          method: "POST",
+          body: soapEnvelope,
           headers: {
             "Content-Type": "text/xml",
           },
         }
       );
     } else {
-      fetchValidation = axios.get(`${this.ssoBase}${this.validateURI}`, {
-        params: {
-          ticket: ticket,
-          service: service,
-        },
-        headers: {
-          "Content-Type": "text/xml",
-        },
-      });
+      fetchValidation = fetch(
+        `${this.ssoBase}${this.validateURI}?ticket=${ticket}&service=${service}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "text/xml",
+          },
+        }
+      );
     }
 
     fetchValidation
-      .then((response) => response.data as string)
+      .then((response) => response.text())
       .then((xml) => {
         switch (this.version) {
           case "CAS1.0":
