@@ -1,5 +1,5 @@
 {
-  "name": "passport-cas",
+  "name": "@coursetable/passport-cas",
   "version": "0.1.2",
   "description": "CAS authentication strategies for Passport.",
   "main": "dist/index.js",
