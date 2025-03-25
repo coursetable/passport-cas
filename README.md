@@ -6,7 +6,7 @@ This is an updated fork of https://github.com/sadne/passport-cas.
 
 ## Install
 
-    $ npm install passport-cas
+    $ npm install @coursetable/passport-cas
 
 #### Configure Strategy
 
