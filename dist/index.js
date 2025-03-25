@@ -71,12 +71,12 @@ const validateResponseCas3saml = async (body) => {
 };
 class Strategy extends passport_strategy_1.Strategy {
     name = "cas";
-    #version;
-    #ssoBaseURL;
-    #serverBaseURL;
-    #validateURL;
-    #callbackURL;
-    #verify;
+    version;
+    ssoBaseURL;
+    serverBaseURL;
+    validateURL;
+    callbackURL;
+    verify;
     constructor(options, verify) {
         super();
         if (!options.version) {
@@ -88,15 +88,15 @@ class Strategy extends passport_strategy_1.Strategy {
         if (!verify) {
             throw new Error("CAS authentication strategy requires a verify function");
         }
-        this.#version = options.version;
-        this.#ssoBaseURL = options.ssoBaseURL;
-        this.#serverBaseURL = options.serverBaseURL;
-        this.#callbackURL = options.callbackURL;
-        this.#verify = verify;
-        this.#validateURL =
+        this.version = options.version;
+        this.ssoBaseURL = options.ssoBaseURL;
+        this.serverBaseURL = options.serverBaseURL;
+        this.callbackURL = options.callbackURL;
+        this.verify = verify;
+        this.validateURL =
             options.validateURL ??
                 (() => {
-                    switch (this.#version) {
+                    switch (this.version) {
                         case "CAS1.0":
                             return "/validate";
                         case "CAS2.0":
@@ -107,8 +107,8 @@ class Strategy extends passport_strategy_1.Strategy {
                         case "CAS3.0-with-saml":
                             return "/samlValidate";
                         default:
-                            const _exhaustiveCheck = this.#version;
-                            throw new Error("Unsupported version " + this.#version);
+                            const _exhaustiveCheck = this.version;
+                            throw new Error("Unsupported version " + this.version);
                     }
                 })();
     }
@@ -117,7 +117,7 @@ class Strategy extends passport_strategy_1.Strategy {
         const service = this.service(req);
         const ticket = req.query["ticket"];
         if (!ticket) {
-            const redirectURL = url_1.default.parse(this.#ssoBaseURL + "/login", true);
+            const redirectURL = url_1.default.parse(this.ssoBaseURL + "/login", true);
             if (options.copyQueryParameters ?? true) {
                 // Copy query parameters from original request.
                 const originalQuery = url_1.default.parse(req.url, true).query;
@@ -129,12 +129,12 @@ class Strategy extends passport_strategy_1.Strategy {
             return this.redirect(url_1.default.format(redirectURL));
         }
         let fetchValidation;
-        if (this.#version === "CAS3.0-with-saml" ||
-            this.#version === "CAS2.0-with-saml") {
+        if (this.version === "CAS3.0-with-saml" ||
+            this.version === "CAS2.0-with-saml") {
             const requestId = (0, uuid_1.v4)();
             const issueInstant = new Date().toISOString();
             const soapEnvelope = `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="${requestId}" IssueInstant="${issueInstant}"><samlp:AssertionArtifact>${ticket}</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
-            fetchValidation = fetch(`${this.#ssoBaseURL}${this.#validateURL}?TARGET=${service}`, {
+            fetchValidation = fetch(`${this.ssoBaseURL}${this.validateURL}?TARGET=${service}`, {
                 method: "POST",
                 body: soapEnvelope,
                 headers: {
@@ -143,7 +143,7 @@ class Strategy extends passport_strategy_1.Strategy {
             });
         }
         else {
-            fetchValidation = fetch(`${this.#ssoBaseURL}${this.#validateURL}?ticket=${ticket}&service=${service}`, {
+            fetchValidation = fetch(`${this.ssoBaseURL}${this.validateURL}?ticket=${ticket}&service=${service}`, {
                 method: "GET",
                 headers: {
                     "Content-Type": "text/xml",
@@ -153,7 +153,7 @@ class Strategy extends passport_strategy_1.Strategy {
         fetchValidation
             .then((response) => response.text())
             .then((xml) => {
-            switch (this.#version) {
+            switch (this.version) {
                 case "CAS1.0":
                     return validateResponseCas1(xml);
                 case "CAS2.0":
@@ -163,11 +163,11 @@ class Strategy extends passport_strategy_1.Strategy {
                 case "CAS3.0-with-saml":
                     return validateResponseCas3saml(xml);
                 default:
-                    const _exhaustiveCheck = this.#version;
-                    throw new Error("Unsupported version " + this.#version);
+                    const _exhaustiveCheck = this.version;
+                    throw new Error("Unsupported version " + this.version);
             }
         })
-            .then((user) => this.#verify(user, (err, user, info) => {
+            .then((user) => this.verify(user, (err, user, info) => {
             // Finish authentication flow.
             if (err) {
                 return this.error(new Error("user-provided verify function failed", { cause: err }));
@@ -184,8 +184,8 @@ class Strategy extends passport_strategy_1.Strategy {
      */
     service(req) {
         let baseUrl;
-        if (this.#serverBaseURL) {
-            baseUrl = this.#serverBaseURL;
+        if (this.serverBaseURL) {
+            baseUrl = this.serverBaseURL;
         }
         else if (req.headers["x-forwarded-host"]) {
             // We need to include this in Express <= v4, since the behavior
@@ -213,7 +213,7 @@ class Strategy extends passport_strategy_1.Strategy {
             // above, this won't have a port number and so we attempt to use it last.
             baseUrl = `${req.protocol}://${req.hostname}`;
         }
-        const serviceURL = this.#callbackURL || req.originalUrl;
+        const serviceURL = this.callbackURL || req.originalUrl;
         const resolvedURL = url_1.default.resolve(baseUrl, serviceURL);
         const parsedURL = url_1.default.parse(resolvedURL, true);
         delete parsedURL.query.ticket;
