@@ -9,7 +9,8 @@
   },
   "scripts": {
     "demo": "DEBUG=axios ts-node demo/server.ts",
-    "compile": "tsc"
+    "compile": "tsc",
+    "prepublish": "npm run compile"
   },
   "repository": "https://github.com/coursetable/passport-cas",
   "keywords": [

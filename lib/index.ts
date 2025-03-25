@@ -88,12 +88,12 @@ const validateResponseCas3saml = async (body: string): Promise<CasInfo> => {
 export class Strategy extends BaseStrategy {
   name = "cas";
 
-  #version: VersionOptions;
-  #ssoBaseURL: string;
-  #serverBaseURL?: string;
-  #validateURL: string;
-  #callbackURL?: string;
-  #verify: VerifyFunction;
+  private version: VersionOptions;
+  private ssoBaseURL: string;
+  private serverBaseURL?: string;
+  private validateURL: string;
+  private callbackURL?: string;
+  private verify: VerifyFunction;
 
   constructor(
     options: {
@@ -116,16 +116,16 @@ export class Strategy extends BaseStrategy {
       throw new Error("CAS authentication strategy requires a verify function");
     }
 
-    this.#version = options.version;
-    this.#ssoBaseURL = options.ssoBaseURL;
-    this.#serverBaseURL = options.serverBaseURL;
-    this.#callbackURL = options.callbackURL;
-    this.#verify = verify;
+    this.version = options.version;
+    this.ssoBaseURL = options.ssoBaseURL;
+    this.serverBaseURL = options.serverBaseURL;
+    this.callbackURL = options.callbackURL;
+    this.verify = verify;
 
-    this.#validateURL =
+    this.validateURL =
       options.validateURL ??
       (() => {
-        switch (this.#version) {
+        switch (this.version) {
           case "CAS1.0":
             return "/validate";
           case "CAS2.0":
@@ -136,8 +136,8 @@ export class Strategy extends BaseStrategy {
           case "CAS3.0-with-saml":
             return "/samlValidate";
           default:
-            const _exhaustiveCheck: never = this.#version;
-            throw new Error("Unsupported version " + this.#version);
+            const _exhaustiveCheck: never = this.version;
+            throw new Error("Unsupported version " + this.version);
         }
       })();
   }
@@ -154,7 +154,7 @@ export class Strategy extends BaseStrategy {
     const service = this.service(req);
     const ticket = req.query["ticket"];
     if (!ticket) {
-      const redirectURL = url.parse(this.#ssoBaseURL + "/login", true);
+      const redirectURL = url.parse(this.ssoBaseURL + "/login", true);
 
       if (options.copyQueryParameters ?? true) {
         // Copy query parameters from original request.
@@ -170,15 +170,15 @@ export class Strategy extends BaseStrategy {
 
     let fetchValidation: Promise<Response>;
     if (
-      this.#version === "CAS3.0-with-saml" ||
-      this.#version === "CAS2.0-with-saml"
+      this.version === "CAS3.0-with-saml" ||
+      this.version === "CAS2.0-with-saml"
     ) {
       const requestId = uuidV4();
       const issueInstant = new Date().toISOString();
       const soapEnvelope = `<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"><SOAP-ENV:Header/><SOAP-ENV:Body><samlp:Request xmlns:samlp="urn:oasis:names:tc:SAML:1.0:protocol" MajorVersion="1" MinorVersion="1" RequestID="${requestId}" IssueInstant="${issueInstant}"><samlp:AssertionArtifact>${ticket}</samlp:AssertionArtifact></samlp:Request></SOAP-ENV:Body></SOAP-ENV:Envelope>`;
 
       fetchValidation = fetch(
-        `${this.#ssoBaseURL}${this.#validateURL}?TARGET=${service}`,
+        `${this.ssoBaseURL}${this.validateURL}?TARGET=${service}`,
         {
           method: "POST",
           body: soapEnvelope,
@@ -189,9 +189,7 @@ export class Strategy extends BaseStrategy {
       );
     } else {
       fetchValidation = fetch(
-        `${this.#ssoBaseURL}${
-          this.#validateURL
-        }?ticket=${ticket}&service=${service}`,
+        `${this.ssoBaseURL}${this.validateURL}?ticket=${ticket}&service=${service}`,
         {
           method: "GET",
           headers: {
@@ -204,7 +202,7 @@ export class Strategy extends BaseStrategy {
     fetchValidation
       .then((response) => response.text())
       .then((xml) => {
-        switch (this.#version) {
+        switch (this.version) {
           case "CAS1.0":
             return validateResponseCas1(xml);
           case "CAS2.0":
@@ -214,12 +212,12 @@ export class Strategy extends BaseStrategy {
           case "CAS3.0-with-saml":
             return validateResponseCas3saml(xml);
           default:
-            const _exhaustiveCheck: never = this.#version;
-            throw new Error("Unsupported version " + this.#version);
+            const _exhaustiveCheck: never = this.version;
+            throw new Error("Unsupported version " + this.version);
         }
       })
       .then((user) =>
-        this.#verify(user, (err: any, user?: any, info?: any): void => {
+        this.verify(user, (err: any, user?: any, info?: any): void => {
           // Finish authentication flow.
           if (err) {
             return this.error(
@@ -242,8 +240,8 @@ export class Strategy extends BaseStrategy {
    */
   private service(req: express.Request): string {
     let baseUrl;
-    if (this.#serverBaseURL) {
-      baseUrl = this.#serverBaseURL;
+    if (this.serverBaseURL) {
+      baseUrl = this.serverBaseURL;
     } else if (req.headers["x-forwarded-host"]) {
       // We need to include this in Express <= v4, since the behavior
       // is to strip the port number by default. This is fixed in Express v5.
@@ -272,7 +270,7 @@ export class Strategy extends BaseStrategy {
       baseUrl = `${req.protocol}://${req.hostname}`;
     }
 
-    const serviceURL = this.#callbackURL || req.originalUrl;
+    const serviceURL = this.callbackURL || req.originalUrl;
     const resolvedURL = url.resolve(baseUrl, serviceURL);
     const parsedURL = url.parse(resolvedURL, true);
     delete parsedURL.query.ticket;
