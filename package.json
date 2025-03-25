@@ -12,7 +12,10 @@
     "compile": "tsc",
     "prepublish": "npm run compile"
   },
-  "repository": "https://github.com/coursetable/passport-cas",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coursetable/passport-cas.git"
+  },
   "keywords": [
     "passport",
     "auth",
