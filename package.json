@@ -10,7 +10,7 @@
   "scripts": {
     "demo": "DEBUG=axios ts-node demo/server.ts",
     "compile": "tsc",
-    "prepublish": "npm run compile"
+    "prepublishOnly": "npm run compile"
   },
   "repository": {
     "type": "git",
