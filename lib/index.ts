@@ -1,8 +1,10 @@
 import url from "url";
+import { promisify } from "util";
 import { v4 as uuidV4 } from "uuid";
 import { Strategy as BaseStrategy } from "passport-strategy";
 import { parseString, processors } from "xml2js";
 import type express from "express";
+import type { SessionData, Store } from "express-session";
 
 type CasInfo = {
   user: string;
@@ -85,6 +87,59 @@ const validateResponseCas3saml = async (body: string): Promise<CasInfo> => {
   throw new Error("Authentication failed");
 };
 
+/** used by {@link performBackChannelSLO} */
+declare module "express-session" {
+  interface SessionData {
+    id?: string;
+    passport?: {
+      cas?: {
+        ticket?: String;
+      }
+    }
+  }
+}
+
+/**
+ * Depending on the store, the {@link Store.all()} method returns SessionData[] or an object { [sid: string]: SessionData; }.
+ * This is used to standardize this.
+ * used by {@link performBackChannelSLO}
+ */
+function toSessionArray(
+  sessions:
+    SessionData[]
+    | { [sid: string]: SessionData; }
+    | null | undefined,
+): SessionData[] {
+  if (!sessions) {
+    return [];
+  } else if (Array.isArray(sessions)) {
+    return sessions;
+  } else {
+    return Object.entries(sessions)
+      .map(([sessionId, session]) => ({
+        ...session,
+        id: session.id || sessionId,
+      }));
+  }
+}
+
+async function performBackChannelSLO(
+  store: Store,
+  ticket: String,
+): Promise<void> {
+  const getAllSessions = promisify(store.all!).bind(store);
+  const logoutSession = promisify(store.destroy).bind(store);
+
+  const sessions = await getAllSessions();
+  const sessionArray = toSessionArray(sessions);
+  for (const session of sessionArray) {
+    if (session.passport?.cas?.ticket === ticket && session.id) {
+      await logoutSession(session.id);
+      return;
+    }
+  }
+}
+
 export class Strategy extends BaseStrategy {
   name = "cas";
 
@@ -94,6 +149,7 @@ export class Strategy extends BaseStrategy {
   private validateURL: string;
   private callbackURL?: string;
   private verify: VerifyFunction;
+  private performBackChannelSLO?: boolean;
 
   constructor(
     options: {
@@ -102,6 +158,7 @@ export class Strategy extends BaseStrategy {
       serverBaseURL?: string;
       validateURL?: string;
       callbackURL?: string;
+      performBackChannelSLO?: boolean;
     },
     verify: VerifyFunction
   ) {
@@ -121,6 +178,7 @@ export class Strategy extends BaseStrategy {
     this.serverBaseURL = options.serverBaseURL;
     this.callbackURL = options.callbackURL;
     this.verify = verify;
+    this.performBackChannelSLO = options.performBackChannelSLO;
 
     this.validateURL =
       options.validateURL ??
@@ -142,14 +200,23 @@ export class Strategy extends BaseStrategy {
       })();
   }
 
-  override authenticate(
+  override async authenticate(
     req: express.Request,
     options?: {
       /** Preserve the original query parameters. Default true. */
       copyQueryParameters?: boolean;
     }
-  ): void {
+  ): Promise<void> {
     options = options ?? {};
+
+    if (this.performBackChannelSLO && req.body?.logoutRequest && req.sessionStore?.all) {
+      const logoutRequest: { logoutrequest: { nameid: String, sessionindex: String } } = await parseXmlString(req.body.logoutRequest);
+      const ticket = logoutRequest?.logoutrequest?.sessionindex;
+      if (ticket) {
+        await performBackChannelSLO(req.sessionStore, ticket);
+        return this.pass();
+      }
+    }
 
     const service = this.service(req);
     const ticket = req.query["ticket"];
@@ -228,6 +295,12 @@ export class Strategy extends BaseStrategy {
             return this.fail(info);
           }
           this.success(user, info);
+          if (this.performBackChannelSLO) {
+            req.res!.once("close", () => {
+              (req.session.passport!.cas ??= {}).ticket = ticket as string;
+              req.session.save();
+            });
+          }
         })
       )
       .catch((err) =>
